@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prediction Market</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .event {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Prediction Market</h1>
+        <h2>Create a Prediction Event</h2>
+        <input type="text" id="eventDescription" placeholder="Event Description">
+        <input type="number" id="expirationTime" placeholder="Expiration Time (in seconds from now)">
+        <button onclick="createEvent()">Create Event</button>
+        
+        <h2>Place a Bet</h2>
+        <input type="number" id="betEventId" placeholder="Event ID">
+        <select id="prediction">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+        </select>
+        <input type="number" id="betAmount" placeholder="Bet Amount (ETH)">
+        <button onclick="placeBet()">Place Bet</button>
+
+        <h2>Resolve an Event</h2>
+        <input type="number" id="resolveEventId" placeholder="Event ID">
+        <select id="resolveOutcome">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+        </select>
+        <button onclick="resolveEvent()">Resolve Event</button>
+
+        <h2>Claim Winnings</h2>
+        <input type="number" id="claimEventId" placeholder="Event ID">
+        <button onclick="claimWinnings()">Claim Winnings</button>
+
+        <h2>Event Details</h2>
+        <input type="number" id="detailsEventId" placeholder="Event ID">
+        <button onclick="getEventDetails()">Get Details</button>
+        <div id="eventDetails"></div>
+    </div>
+
+    <script>
+        let web3;
+        let contract;
+        const contractAddress = "0xc74C6f450109d93e05B0224C97c125209113956c";
+        const contractABI = [
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "eventId",
+				"type": "uint256"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "bettor",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "bool",
+				"name": "prediction",
+				"type": "bool"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "BetPlaced",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_eventId",
+				"type": "uint256"
+			}
+		],
+		"name": "claimWinnings",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_eventDescription",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "_expirationTime",
+				"type": "uint256"
+			}
+		],
+		"name": "createPredictionEvent",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "eventId",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "eventDescription",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "expirationTime",
+				"type": "uint256"
+			}
+		],
+		"name": "EventCreated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "eventId",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "bool",
+				"name": "outcome",
+				"type": "bool"
+			}
+		],
+		"name": "EventResolved",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_eventId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "_prediction",
+				"type": "bool"
+			}
+		],
+		"name": "placeBet",
+		"outputs": [],
+		"stateMutability": "payable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_eventId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "_outcome",
+				"type": "bool"
+			}
+		],
+		"name": "resolveEvent",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "eventCounter",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "events",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "eventDescription",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalYesBets",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalNoBets",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "isResolved",
+				"type": "bool"
+			},
+			{
+				"internalType": "bool",
+				"name": "outcome",
+				"type": "bool"
+			},
+			{
+				"internalType": "uint256",
+				"name": "expirationTime",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_eventId",
+				"type": "uint256"
+			}
+		],
+		"name": "getEventDetails",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "description",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalYesBets",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalNoBets",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "isResolved",
+				"type": "bool"
+			},
+			{
+				"internalType": "bool",
+				"name": "outcome",
+				"type": "bool"
+			},
+			{
+				"internalType": "uint256",
+				"name": "expirationTime",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+];
+
+        async function init() {
+            if (window.ethereum) {
+                web3 = new Web3(window.ethereum);
+                await window.ethereum.request({ method: 'eth_requestAccounts' });
+                contract = new web3.eth.Contract(contractABI, contractAddress);
+            } else {
+                alert('Please install MetaMask!');
+            }
+        }
+
+        async function createEvent() {
+            const description = document.getElementById('eventDescription').value;
+            const expirationTime = Math.floor(Date.now() / 1000) + parseInt(document.getElementById('expirationTime').value);
+            const accounts = await web3.eth.getAccounts();
+            await contract.methods.createPredictionEvent(description, expirationTime).send({ from: accounts[0] });
+            alert('Event Created!');
+        }
+
+        async function placeBet() {
+            const eventId = document.getElementById('betEventId').value;
+            const prediction = document.getElementById('prediction').value === 'true';
+            const betAmount = web3.utils.toWei(document.getElementById('betAmount').value, 'ether');
+            const accounts = await web3.eth.getAccounts();
+            await contract.methods.placeBet(eventId, prediction).send({ from: accounts[0], value: betAmount });
+            alert('Bet Placed!');
+        }
+
+        async function resolveEvent() {
+            const eventId = document.getElementById('resolveEventId').value;
+            const outcome = document.getElementById('resolveOutcome').value === 'true';
+            const accounts = await web3.eth.getAccounts();
+            await contract.methods.resolveEvent(eventId, outcome).send({ from: accounts[0] });
+            alert('Event Resolved!');
+        }
+
+        async function claimWinnings() {
+            const eventId = document.getElementById('claimEventId').value;
+            const accounts = await web3.eth.getAccounts();
+            await contract.methods.claimWinnings(eventId).send({ from: accounts[0] });
+            alert('Winnings Claimed!');
+        }
+
+        async function getEventDetails() {
+            const eventId = document.getElementById('detailsEventId').value;
+            const details = await contract.methods.getEventDetails(eventId).call();
+            document.getElementById('eventDetails').innerText = `Description: ${details.description}\nTotal Yes Bets: ${web3.utils.fromWei(details.totalYesBets, 'ether')} ETH\nTotal No Bets: ${web3.utils.fromWei(details.totalNoBets, 'ether')} ETH\nResolved: ${details.isResolved}\nOutcome: ${details.outcome ? 'Yes' : 'No'}\nExpiration: ${new Date(details.expirationTime * 1000).toLocaleString()}`;
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
